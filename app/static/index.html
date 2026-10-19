@@ -1125,7 +1125,7 @@
             }
             pasteInput.value = data.text;
             const n = data.stats.total_replacements;
-            showMessage(t('ok_anonymized', {n: n, u: Object.keys(data.mapping).length}), 'success');
+            showMessage(t('ok_anonymized', {n: n, u: (data.stats && data.stats.replaced) || 0}), 'success');
             pasteCopyBtn.disabled = false;
         } catch (error) {
             showMessage(t('err_generic', {m: error.message}), 'error');

@@ -59,7 +59,7 @@ limiter = Limiter(
 app.config["MAX_CONTENT_LENGTH"] = int(
     os.environ.get("MAX_UPLOAD_MB", "50")
 ) * 1024 * 1024
-app.config["ALLOWED_EXTENSIONS"] = {"log", "txt", *SUPPORTED_EXCEL_EXTS}
+app.config["ALLOWED_EXTENSIONS"] = {"log", "txt", "json", *SUPPORTED_EXCEL_EXTS}
 app.config["PROCESS_TIMEOUT_SECONDS"] = int(
     os.environ.get("PROCESS_TIMEOUT", "120")
 )
@@ -164,7 +164,8 @@ def validate_text_content(raw: bytes) -> bool:
         try:
             mime = magic.Magic(mime=True).from_buffer(raw[:64 * 1024])
             if mime not in ("text/plain", "application/octet-stream",
-                            "text/x-log", "inode/x-empty"):
+                            "text/x-log", "inode/x-empty",
+                            "application/json", "text/json"):
                 return False
         except Exception as e:  # noqa: BLE001
             logger.warning("magic недоступен: %s", e)
@@ -267,12 +268,14 @@ def upload_file():
     ext = file_ext(file.filename)
     if ext in SUPPORTED_EXCEL_EXTS:
         return _handle_excel(file.filename, raw, ext, anonymizer, started)
+    if ext == "json":
+        return _handle_json(file.filename, raw, anonymizer, started)
     return _handle_text(file.filename, raw, anonymizer, started)
 
 
 def _handle_text(filename: str, raw: bytes, anonymizer: Anonymizer,
                  started: float):
-    """Анонимизация текстового файла (.log/.txt)."""
+    """Анонимизация текстового файла (.log/.txt/.json)."""
     if not validate_text_content(raw):
         return jsonify({"error": msg("invalid_binary")}), 400
 
@@ -297,6 +300,52 @@ def _handle_text(filename: str, raw: bytes, anonymizer: Anonymizer,
         mimetype="text/plain",
     )
     resp.headers["X-Anon-Stats"] = json.dumps(result.stats, ensure_ascii=False)
+    return resp
+
+
+def _handle_json(filename: str, raw: bytes, anonymizer: Anonymizer,
+                 started: float):
+    """Анонимизация JSON-файла: рекурсивная обработка всех строковых значений."""
+    if not validate_text_content(raw):
+        return jsonify({"error": msg("invalid_binary")}), 400
+
+    try:
+        text = decode_text(raw)
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        return jsonify({"error": f"Невалидный JSON: {e}"}), 400
+
+    def anonymize_value(obj):
+        """Рекурсивно анонимизирует все строковые значения в JSON."""
+        if isinstance(obj, str):
+            result = anonymizer.anonymize_text(obj)
+            return result.text
+        elif isinstance(obj, dict):
+            return {k: anonymize_value(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [anonymize_value(item) for item in obj]
+        else:
+            return obj
+
+    anonymized_data = anonymize_value(data)
+    output_text = json.dumps(anonymized_data, ensure_ascii=False, indent=2)
+
+    elapsed = time.monotonic() - started
+    logger.info(
+        "Обработан JSON %s (%d байт, %.1f с)",
+        filename, len(raw), elapsed
+    )
+
+    import re
+    safe_base = re.sub(r'[^\w\-.]', '_', os.path.splitext(os.path.basename(filename))[0])
+    download_name = safe_base + "_clean.json"
+    resp = send_file(
+        io.BytesIO(output_text.encode("utf-8")),
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/json",
+    )
+    resp.headers["X-Anon-Stats"] = json.dumps({"format": "json"}, ensure_ascii=False)
     return resp
 
 
