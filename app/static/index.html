@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анонимайзер логов</title>
+    <style>
+        :root {
+            --bg: #0b0b0c;
+            --fg: #d4d4d8;
+            --muted: #71717a;
+            --border: #27272a;
+            --border-hi: #3f3f46;
+            --accent: #22c55e;
+            --error: #ef4444;
+            --warn: #eab308;
+            --info: #60a5fa;
+            --panel: #111113;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            border-radius: 0 !important;
+        }
+
+        html, body {
+            background: var(--bg);
+        }
+
+        body {
+            font-family: ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo,
+                         Consolas, "Liberation Mono", monospace;
+            color: var(--fg);
+            min-height: 100vh;
+            padding: 48px 24px 64px;
+            font-size: 14px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 1180px;
+            margin: 0 auto;
+            background: transparent;
+            border: 0;
+            padding: 0;
+        }
+
+        /* --- Заголовок --- */
+        .header {
+            text-align: left;
+            margin-bottom: 32px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header .icon {
+            font-size: 12px;
+            letter-spacing: 0.2em;
+            color: var(--accent);
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--fg);
+        }
+
+        .header p {
+            color: var(--muted);
+            font-size: 13px;
+            margin-top: 6px;
+        }
+
+        /* --- Секции --- */
+        .section-label {
+            display: block;
+            font-size: 11px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        /* --- Drop zone --- */
+        .drop-zone {
+            border: 1px dashed var(--border-hi);
+            background: var(--panel);
+            padding: 32px 20px;
+            text-align: center;
+            cursor: pointer;
+            position: relative;
+            transition: border-color 0.15s linear, background 0.15s linear;
+        }
+
+        .drop-zone:hover {
+            border-color: var(--accent);
+        }
+
+        .drop-zone.dragover {
+            border-color: var(--accent);
+            border-style: solid;
+            background: #0f1512;
+        }
+
+        .drop-zone.has-file {
+            border-color: var(--accent);
+            border-style: solid;
+        }
+
+        .drop-zone .upload-icon {
+            display: block;
+            font-size: 14px;
+            letter-spacing: 0.2em;
+            color: var(--muted);
+            margin-bottom: 12px;
+        }
+
+        .drop-zone.has-file .upload-icon {
+            color: var(--accent);
+        }
+
+        .drop-zone .text {
+            font-size: 14px;
+            color: var(--fg);
+        }
+
+        .drop-zone .text strong {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .drop-zone .subtext {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 8px;
+        }
+
+        .drop-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* --- Информация о файле --- */
+        .file-info {
+            display: none;
+            margin-top: 12px;
+            padding: 12px 14px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-left: 2px solid var(--accent);
+            align-items: center;
+            gap: 12px;
+        }
+
+        .file-info.show {
+            display: flex;
+        }
+
+        .file-info .file-icon {
+            font-size: 12px;
+            color: var(--muted);
+            letter-spacing: 0.1em;
+        }
+
+        .file-info .file-details {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .file-info .file-name {
+            color: var(--fg);
+            font-size: 13px;
+            font-weight: 600;
+            word-break: break-all;
+        }
+
+        .file-info .file-size {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .file-info .file-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--accent);
+            white-space: nowrap;
+        }
+
+        .file-info .file-status .status-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--accent);
+        }
+
+        .file-info .remove-file {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-family: inherit;
+            font-size: 12px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 6px 8px;
+            transition: color 0.15s linear, border-color 0.15s linear;
+        }
+
+        .file-info .remove-file:hover {
+            color: var(--error);
+            border-color: var(--error);
+        }
+
+        /* --- Вставка текста --- */
+        .paste-area {
+            margin-top: 28px;
+        }
+
+        .paste-area textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 14px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--fg);
+            font-family: inherit;
+            font-size: 13px;
+            line-height: 1.5;
+            resize: vertical;
+        }
+
+        .paste-area textarea::placeholder {
+            color: var(--muted);
+        }
+
+        .paste-area textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* --- Настройки --- */
+        .settings {
+            margin-top: 28px;
+            padding: 16px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+        }
+
+        .settings-title {
+            font-size: 11px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .settings-grid label,
+        .settings-row label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--fg);
+            cursor: pointer;
+        }
+
+        .settings-grid input[type="checkbox"],
+        .settings-row input[type="checkbox"] {
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border: 1px solid var(--border-hi);
+            background: var(--bg);
+            cursor: pointer;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .settings-grid input[type="checkbox"]:checked,
+        .settings-row input[type="checkbox"]:checked {
+            border-color: var(--accent);
+            background: var(--accent);
+        }
+
+        .settings-grid input[type="checkbox"]:checked::after,
+        .settings-row input[type="checkbox"]:checked::after {
+            content: "";
+            position: absolute;
+            inset: 3px;
+            background: var(--bg);
+        }
+
+        .settings-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .settings-row > label[for] {
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted);
+            white-space: nowrap;
+            flex-shrink: 0;
+            min-width: 104px;
+        }
+
+        .settings-row select,
+        .settings-row input[type="text"] {
+            flex: 1;
+            min-width: 0;
+            padding: 7px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border-hi);
+            color: var(--fg);
+            font-family: inherit;
+            font-size: 13px;
+        }
+
+        .settings-row select:focus,
+        .settings-row input[type="text"]:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .settings-row select:disabled,
+        .settings-row input[type="text"]:disabled {
+            color: #52525b;
+            border-color: var(--border);
+            cursor: not-allowed;
+        }
+
+        /* --- Кнопки --- */
+        .actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid var(--border-hi);
+            background: var(--panel);
+            color: var(--fg);
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: background 0.15s linear, color 0.15s linear,
+                        border-color 0.15s linear;
+        }
+
+        .btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: transparent;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--accent);
+            color: #06130a;
+        }
+
+        .btn-primary:active:not(:disabled) {
+            background: #16a34a;
+            border-color: #16a34a;
+            color: #06130a;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            border-color: var(--fg);
+            color: #fff;
+        }
+
+        .btn-success {
+            border-color: var(--accent);
+            background: var(--accent);
+            color: #06130a;
+        }
+
+        /* --- Прогресс --- */
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .progress-container.show {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 2px;
+            background: var(--border);
+            overflow: hidden;
+        }
+
+        .progress-bar .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.2s linear;
+        }
+
+        .progress-text {
+            margin-top: 8px;
+            font-size: 11px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        /* --- Сообщения --- */
+        .message {
+            margin-top: 20px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-left-width: 2px;
+            background: var(--panel);
+            font-size: 13px;
+            display: none;
+            word-break: break-word;
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .message.success {
+            border-left-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .message.error {
+            border-left-color: var(--error);
+            color: var(--error);
+        }
+
+        .message.info {
+            border-left-color: var(--info);
+            color: var(--info);
+        }
+
+        /* --- Footer --- */
+        .footer {
+            margin-top: 32px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            font-size: 11px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #52525b;
+        }
+
+        .footer a {
+            color: var(--muted);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            color: var(--fg);
+            text-decoration: underline;
+        }
+
+        /* --- Пульсация --- */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .pulsing {
+            animation: pulse 1.2s steps(2, end) infinite;
+        }
+
+        ::selection {
+            background: var(--accent);
+            color: #06130a;
+        }
+
+        /* --- Двухколоночная раскладка --- */
+        .workspace {
+            display: grid;
+            grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+            gap: 24px;
+            align-items: start;
+        }
+
+        .col-main, .col-side {
+            min-width: 0;
+        }
+
+        .col-side .settings {
+            margin-top: 0;
+        }
+
+        /* --- Переключатель языка --- */
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .lang-switch {
+            display: flex;
+            border: 1px solid var(--border-hi);
+        }
+
+        .lang-switch button {
+            background: transparent;
+            border: 0;
+            color: var(--muted);
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            padding: 5px 12px;
+            cursor: pointer;
+        }
+
+        .lang-switch button.active {
+            background: var(--accent);
+            color: #06130a;
+        }
+
+        .lang-switch button:not(.active):hover {
+            color: var(--fg);
+        }
+
+        /* --- Адаптивность --- */
+        @media (max-width: 900px) {
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .col-side .settings {
+                margin-top: 28px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 28px 16px 48px;
+            }
+
+            .header h1 {
+                font-size: 17px;
+            }
+
+            .drop-zone {
+                padding: 24px 14px;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Заголовок -->
+    <div class="header">
+        <div class="header-top">
+            <div class="icon">[SECURE]</div>
+            <div class="lang-switch" id="langSwitch">
+                <button type="button" id="langRu" data-lang="ru">RU</button>
+                <button type="button" id="langEn" data-lang="en">EN</button>
+            </div>
+        </div>
+        <h1 data-i18n="title">Анонимайзер логов</h1>
+        <p data-i18n="subtitle">Анонимизация логов: IP, порты, телефоны, ФИО, домены — с сохранением логики</p>
+    </div>
+
+    <div class="workspace">
+    <!-- Левая колонка: ввод -->
+    <div class="col-main">
+    <!-- Зона загрузки -->
+    <div class="drop-zone" id="dropZone">
+        <span class="upload-icon" id="uploadIcon">[FILE]</span>
+        <div class="text" data-i18n-html="drop_text">
+            <strong>Перетащите файл сюда</strong> или <strong>нажмите для выбора</strong>
+        </div>
+        <div class="subtext" data-i18n="drop_subtext">Поддерживаются файлы .log, .txt, .xls, .xlsx (до 50 MB)</div>
+        <input type="file" id="fileInput" accept=".log,.txt,.xls,.xlsx">
+    </div>
+
+
+    <!-- Информация о файле -->
+    <div class="file-info" id="fileInfo">
+        <span class="file-icon">&gt;_</span>
+        <div class="file-details">
+            <div class="file-name" id="fileName">file.log</div>
+            <div class="file-size" id="fileSize">0 KB</div>
+        </div>
+        <div class="file-status">
+            <span class="status-dot"></span>
+            <span data-i18n="file_selected">Выбран</span>
+        </div>
+        <button class="remove-file" id="removeFile" title="Удалить файл" data-i18n-title="remove_file">[x]</button>
+    </div>
+
+    <!-- Вставка текста -->
+    <div class="paste-area">
+        <textarea id="pasteInput" placeholder="// или вставьте текст/лог сюда — затем «Анонимизировать текст»" data-i18n-placeholder="paste_placeholder"></textarea>
+        <div class="actions" style="margin-top: 10px;">
+            <button class="btn btn-secondary" id="pasteAnonBtn" data-i18n="btn_anon_text">Анонимизировать текст</button>
+            <button class="btn btn-secondary" id="pasteCopyBtn" disabled data-i18n="btn_copy">Копировать результат</button>
+        </div>
+    </div>
+
+    <!-- Кнопки действий -->
+    <div class="actions">
+        <button class="btn btn-secondary" id="clearBtn" disabled data-i18n="btn_clear">
+            Очистить
+        </button>
+        <button class="btn btn-primary" id="uploadBtn" disabled data-i18n="btn_process">
+            Обработать
+        </button>
+    </div>
+    </div>
+
+    <!-- Правая колонка: настройки -->
+    <div class="col-side">
+    <!-- Настройки анонимизации -->
+    <div class="settings" id="settings">
+        <div class="settings-title" data-i18n="settings_title">Настройки анонимизации</div>
+        <div class="settings-grid">
+            <label><input type="checkbox" class="entity-cb" value="ip" checked> <span data-i18n="ent_ip">IP-адреса</span></label>
+            <label><input type="checkbox" class="entity-cb" value="port" checked> <span data-i18n="ent_port">Порты</span></label>
+            <label><input type="checkbox" class="entity-cb" value="phone" checked> <span data-i18n="ent_phone">Телефоны</span></label>
+            <label><input type="checkbox" class="entity-cb" value="name" checked> <span data-i18n="ent_name">ФИО</span></label>
+            <label><input type="checkbox" class="entity-cb" value="host" checked> <span data-i18n="ent_host">Домены</span></label>
+            <label><input type="checkbox" class="entity-cb" value="email" checked> <span data-i18n="ent_email">Email</span></label>
+            <label><input type="checkbox" class="entity-cb" value="mac" checked> <span data-i18n="ent_mac">MAC</span></label>
+        </div>
+        <div class="settings-row">
+            <label for="styleSelect" data-i18n="style_label">Стиль замен:</label>
+            <select id="styleSelect">
+                <option value="pseudonym" selected data-i18n="style_pseudonym">Псевдонимы ([IP1])</option>
+                <option value="realistic" data-i18n="style_realistic">Реалистичные (198.18.x.x)</option>
+            </select>
+        </div>
+        <div class="settings-row">
+            <label for="modeSelect" data-i18n="mode_label">Режим:</label>
+            <select id="modeSelect">
+                <option value="session" selected data-i18n="mode_session">Сеанс (по порядку)</option>
+                <option value="stable" data-i18n="mode_stable">Стабильный (по соли)</option>
+            </select>
+            <input type="text" id="saltInput" placeholder="соль" title="Соль для стабильного режима" disabled data-i18n-placeholder="salt_placeholder" data-i18n-title="salt_title">
+        </div>
+        <div class="settings-row">
+            <label><input type="checkbox" id="preservePorts"> <span data-i18n="preserve_ports">Не трогать известные порты (80, 443, 22...)</span></label>
+        </div>
+    </div>
+    </div>
+    </div><!-- /workspace -->
+
+    <!-- Прогресс -->
+    <div class="progress-container" id="progressContainer">
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-text" id="progressText" data-i18n="progress_default">Обработка...</div>
+    </div>
+
+    <!-- Сообщения -->
+    <div class="message" id="message"></div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <span data-i18n="footer">Обработка в памяти. Файлы не сохраняются на сервере.</span>
+    </div>
+</div>
+
+<script>
+    // --- Интернационализация (RU/EN) ---
+    const I18N = {
+        ru: {
+            title: 'Анонимайзер логов',
+            subtitle: 'Анонимизация логов: IP, порты, телефоны, ФИО, домены — с сохранением логики',
+            drop_text: '<strong>Перетащите файл сюда</strong> или <strong>нажмите для выбора</strong>',
+            drop_subtext: 'Поддерживаются файлы .log, .txt, .xls, .xlsx (до 50 MB)',
+            file_selected: 'Выбран',
+            remove_file: 'Удалить файл',
+            paste_placeholder: '// или вставьте текст/лог сюда — затем «Анонимизировать текст»',
+            btn_anon_text: 'Анонимизировать текст',
+            btn_copy: 'Копировать результат',
+            btn_clear: 'Очистить',
+            btn_process: 'Обработать',
+            settings_title: 'Настройки анонимизации',
+            ent_ip: 'IP-адреса', ent_port: 'Порты', ent_phone: 'Телефоны',
+            ent_name: 'ФИО', ent_host: 'Домены', ent_email: 'Email', ent_mac: 'MAC',
+            style_label: 'Стиль замен:',
+            style_pseudonym: 'Псевдонимы ([IP1])',
+            style_realistic: 'Реалистичные (198.18.x.x)',
+            mode_label: 'Режим:',
+            mode_session: 'Сеанс (по порядку)',
+            mode_stable: 'Стабильный (по соли)',
+            salt_placeholder: 'соль',
+            salt_title: 'Соль для стабильного режима',
+            preserve_ports: 'Не трогать известные порты (80, 443, 22...)',
+            progress_default: 'Обработка...',
+            footer: 'Обработка в памяти. Файлы не сохраняются на сервере.',
+            err_too_large: '[ОШИБКА] Файл слишком большой! Максимальный размер: 50 MB',
+            err_bad_ext: '[ОШИБКА] Неподдерживаемый формат! Разрешены: .log, .txt, .xls, .xlsx',
+            err_select_file: '[!] Пожалуйста, выберите файл',
+            err_paste_empty: '[!] Вставьте текст для анонимизации',
+            err_generic: '[ОШИБКА] Ошибка: {m}',
+            info_processing: 'Идет обработка файла...',
+            ok_uploaded: 'Файл обработан. Скачивание началось.',
+            ok_anonymized: 'Анонимизировано: {n} замен, {u} уникальных сущностей',
+            ok_copied: 'Результат скопирован в буфер обмена',
+            ok_copied_fallback: 'Результат скопирован',
+            info_online: 'Соединение восстановлено',
+            err_offline: '[!] Потеряно соединение с интернетом',
+            prog_prepare: 'Подготовка...',
+            prog_send: 'Отправка файла...',
+            prog_process: 'Обработка...',
+            prog_result: 'Подготовка результата...',
+            prog_done: 'Готово',
+            btn_processing: 'Обработка...',
+        },
+        en: {
+            title: 'Log Anonymizer',
+            subtitle: 'Anonymize logs: IPs, ports, phones, names, domains — logic preserved',
+            drop_text: '<strong>Drop a file here</strong> or <strong>click to browse</strong>',
+            drop_subtext: 'Supported: .log, .txt, .xls, .xlsx (up to 50 MB)',
+            file_selected: 'Selected',
+            remove_file: 'Remove file',
+            paste_placeholder: '// or paste text/log here — then click "Anonymize text"',
+            btn_anon_text: 'Anonymize text',
+            btn_copy: 'Copy result',
+            btn_clear: 'Clear',
+            btn_process: 'Process',
+            settings_title: 'Anonymization settings',
+            ent_ip: 'IP addresses', ent_port: 'Ports', ent_phone: 'Phones',
+            ent_name: 'Names', ent_host: 'Domains', ent_email: 'Email', ent_mac: 'MAC',
+            style_label: 'Replacement style:',
+            style_pseudonym: 'Pseudonyms ([IP1])',
+            style_realistic: 'Realistic (198.18.x.x)',
+            mode_label: 'Mode:',
+            mode_session: 'Session (sequential)',
+            mode_stable: 'Stable (salt-based)',
+            salt_placeholder: 'salt',
+            salt_title: 'Salt for stable mode',
+            preserve_ports: 'Keep well-known ports (80, 443, 22...)',
+            progress_default: 'Processing...',
+            footer: 'In-memory processing. Files are never stored on the server.',
+            err_too_large: '[ERROR] File too large! Maximum size: 50 MB',
+            err_bad_ext: '[ERROR] Unsupported format! Allowed: .log, .txt, .xls, .xlsx',
+            err_select_file: '[!] Please select a file first',
+            err_paste_empty: '[!] Paste some text to anonymize',
+            err_generic: '[ERROR] {m}',
+            info_processing: 'Processing the file...',
+            ok_uploaded: 'File processed. Download started.',
+            ok_anonymized: 'Anonymized: {n} replacements, {u} unique entities',
+            ok_copied: 'Result copied to clipboard',
+            ok_copied_fallback: 'Result copied',
+            info_online: 'Connection restored',
+            err_offline: '[!] Connection lost',
+            prog_prepare: 'Preparing...',
+            prog_send: 'Uploading file...',
+            prog_process: 'Processing...',
+            prog_result: 'Preparing result...',
+            prog_done: 'Done',
+            btn_processing: 'Processing...',
+        },
+    };
+
+    let LANG = localStorage.getItem('anon_lang') ||
+        (navigator.language || 'ru').slice(0, 2).toLowerCase();
+    if (!(LANG in I18N)) LANG = 'ru';
+
+    function t(key, vars) {
+        let str = (I18N[LANG] && I18N[LANG][key]) || I18N.ru[key] || key;
+        if (vars) {
+            for (const k in vars) str = str.replace('{' + k + '}', vars[k]);
+        }
+        return str;
+    }
+
+    function applyI18n() {
+        document.documentElement.lang = LANG;
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const v = t(el.dataset.i18n);
+            if (el.tagName === 'OPTION' || el.tagName === 'SPAN' || el.tagName === 'P'
+                || el.tagName === 'H1' || el.tagName === 'DIV') {
+                el.textContent = v;
+            } else {
+                el.textContent = v;
+            }
+        });
+        document.querySelectorAll('[data-i18n-html]').forEach(el => {
+            el.innerHTML = t(el.dataset.i18nHtml);
+        });
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+            el.placeholder = t(el.dataset.i18nPlaceholder);
+        });
+        document.querySelectorAll('[data-i18n-title]').forEach(el => {
+            el.title = t(el.dataset.i18nTitle);
+        });
+        document.querySelectorAll('.lang-switch button').forEach(b => {
+            b.classList.toggle('active', b.dataset.lang === LANG);
+        });
+        // Кнопки, текст которых меняется динамически (состояния)
+        uploadBtn.textContent = t('btn_process');
+        pasteAnonBtn.textContent = t('btn_anon_text');
+    }
+
+    function setLang(lang) {
+        LANG = lang;
+        localStorage.setItem('anon_lang', lang);
+        applyI18n();
+    }
+
+    // --- DOM элементы ---
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const removeFileBtn = document.getElementById('removeFile');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const message = document.getElementById('message');
+    const uploadIcon = document.getElementById('uploadIcon');
+
+    let selectedFile = null;
+
+    // --- Вспомогательные функции ---
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function showMessage(text, type = 'info') {
+        message.textContent = text;
+        message.className = `message show ${type}`;
+        setTimeout(() => {
+            message.className = 'message';
+        }, 10000);
+    }
+
+    function setProgress(percent, text = null) {
+        progressFill.style.width = percent + '%';
+        if (text) {
+            progressText.textContent = text;
+        }
+    }
+
+    function resetUI() {
+        selectedFile = null;
+        fileInput.value = '';
+        fileInfo.classList.remove('show');
+        dropZone.classList.remove('has-file');
+        uploadIcon.textContent = '[FILE]';
+        uploadBtn.disabled = true;
+        clearBtn.disabled = true;
+        progressContainer.classList.remove('show');
+        setProgress(0);
+        message.className = 'message';
+    }
+
+    function handleFileSelect(file) {
+        if (!file) return;
+
+        // Проверка размера (50 MB)
+        if (file.size > 50 * 1024 * 1024) {
+            showMessage(t('err_too_large'), 'error');
+            return;
+        }
+
+        // Проверка расширения
+        const allowedExtensions = ['log', 'txt', 'xls', 'xlsx'];
+        const extension = file.name.split('.').pop().toLowerCase();
+        if (!allowedExtensions.includes(extension)) {
+            showMessage(t('err_bad_ext'), 'error');
+            return;
+        }
+
+        selectedFile = file;
+        
+        // Обновление UI
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        fileInfo.classList.add('show');
+        dropZone.classList.add('has-file');
+        uploadIcon.textContent = '[OK]';
+        uploadBtn.disabled = false;
+        clearBtn.disabled = false;
+        message.className = 'message';
+    }
+
+    // --- Обработчики событий ---
+
+    // Drag & Drop
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFileSelect(files[0]);
+        }
+    });
+
+    // Клик на зону
+    dropZone.addEventListener('click', () => {
+        if (!selectedFile) {
+            fileInput.click();
+        }
+    });
+
+    // Выбор файла через input
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileSelect(e.target.files[0]);
+        }
+    });
+
+    // Удаление файла
+    removeFileBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        resetUI();
+    });
+
+    // Кнопка "Очистить"
+    clearBtn.addEventListener('click', resetUI);
+
+    // --- Основная функция загрузки ---
+    uploadBtn.addEventListener('click', async () => {
+        if (!selectedFile) {
+            showMessage(t('err_select_file'), 'error');
+            return;
+        }
+
+        // Блокировка интерфейса
+        uploadBtn.disabled = true;
+        clearBtn.disabled = true;
+        uploadBtn.textContent = t('btn_processing');
+        uploadBtn.classList.add('pulsing');
+
+        // Показываем прогресс
+        progressContainer.classList.add('show');
+        setProgress(10, t('prog_prepare'));
+        showMessage(t('info_processing'), 'info');
+
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        // Настройки анонимизации
+        document.querySelectorAll('.entity-cb:checked').forEach(cb => {
+            formData.append('entities', cb.value);
+        });
+        formData.append('style', document.getElementById('styleSelect').value);
+        formData.append('lang', LANG);
+        formData.append('mode', document.getElementById('modeSelect').value);
+        const salt = document.getElementById('saltInput').value;
+        if (salt) formData.append('salt', salt);
+        if (document.getElementById('preservePorts').checked) {
+            formData.append('preserve_common_ports', '1');
+        }
+
+        try {
+            setProgress(20, t('prog_send'));
+
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            setProgress(50, t('prog_process'));
+
+            if (!response.ok) {
+                let errorText = `Ошибка ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorText = errorData.error || errorData.details || errorText;
+                } catch (e) {
+                    errorText = await response.text() || errorText;
+                }
+                throw new Error(errorText);
+            }
+
+            setProgress(80, t('prog_result'));
+
+            // Определяем имя файла для скачивания
+            const contentDisposition = response.headers.get('content-disposition');
+            let filename = `anonymized_${selectedFile.name}`;
+            if (contentDisposition) {
+                const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (match && match[1]) {
+                    filename = match[1].replace(/['"]/g, '');
+                }
+            }
+
+            // Скачивание файла
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            setProgress(100, t('prog_done'));
+            showMessage(t('ok_uploaded'), 'success');
+            
+            // Сброс после успешной загрузки
+            setTimeout(() => {
+                resetUI();
+                uploadBtn.textContent = t('btn_process');
+                uploadBtn.classList.remove('pulsing');
+                progressContainer.classList.remove('show');
+            }, 3000);
+
+        } catch (error) {
+            console.error('Error:', error);
+            setProgress(0);
+            showMessage(t('err_generic', {m: error.message}), 'error');
+            
+            uploadBtn.textContent = t('btn_process');
+            uploadBtn.classList.remove('pulsing');
+            uploadBtn.disabled = false;
+            clearBtn.disabled = false;
+            
+            // Скрываем прогресс через 2 секунды
+            setTimeout(() => {
+                progressContainer.classList.remove('show');
+            }, 2000);
+        }
+    });
+
+    // --- Анонимизация вставленного текста ---
+    const pasteInput = document.getElementById('pasteInput');
+    const pasteAnonBtn = document.getElementById('pasteAnonBtn');
+    const pasteCopyBtn = document.getElementById('pasteCopyBtn');
+
+    function currentSettings() {
+        return {
+            entities: Array.from(document.querySelectorAll('.entity-cb:checked')).map(cb => cb.value),
+            style: document.getElementById('styleSelect').value,
+            mode: document.getElementById('modeSelect').value,
+            salt: document.getElementById('saltInput').value,
+            preserve_common_ports: document.getElementById('preservePorts').checked ? '1' : '',
+        };
+    }
+
+    pasteAnonBtn.addEventListener('click', async () => {
+        const text = pasteInput.value;
+        if (!text.trim()) {
+            showMessage(t('err_paste_empty'), 'error');
+            return;
+        }
+        pasteAnonBtn.disabled = true;
+        pasteAnonBtn.textContent = t('btn_processing');
+        try {
+            const settings = currentSettings();
+            if (settings.mode !== 'stable') delete settings.salt;
+            const response = await fetch('/api/anonymize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, lang: LANG, ...settings }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || `Ошибка ${response.status}`);
+            }
+            pasteInput.value = data.text;
+            const n = data.stats.total_replacements;
+            showMessage(t('ok_anonymized', {n: n, u: Object.keys(data.mapping).length}), 'success');
+            pasteCopyBtn.disabled = false;
+        } catch (error) {
+            showMessage(t('err_generic', {m: error.message}), 'error');
+        } finally {
+            pasteAnonBtn.disabled = false;
+            pasteAnonBtn.textContent = t('btn_anon_text');
+        }
+    });
+
+    pasteCopyBtn.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(pasteInput.value);
+            showMessage(t('ok_copied'), 'success');
+        } catch (e) {
+            pasteInput.select();
+            document.execCommand('copy');
+            showMessage(t('ok_copied_fallback'), 'success');
+        }
+    });
+
+    // Активация поля соли только для stable-режима
+    document.getElementById('modeSelect').addEventListener('change', (e) => {
+        document.getElementById('saltInput').disabled = e.target.value !== 'stable';
+    });
+
+    // Переключатель языка
+    document.querySelectorAll('.lang-switch button').forEach(btn => {
+        btn.addEventListener('click', () => setLang(btn.dataset.lang));
+    });
+
+    // Обработка ошибок сети
+    window.addEventListener('online', () => {
+        showMessage(t('info_online'), 'info');
+    });
+
+    window.addEventListener('offline', () => {
+        showMessage(t('err_offline'), 'error');
+    });
+
+    // Инициализация
+    resetUI();
+    applyI18n();
+
+    // Прелоад сообщение
+    console.log('anon: ready, lang=' + LANG);
+</script>
+
+</body>
+</html>
